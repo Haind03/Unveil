@@ -60,6 +60,7 @@ impl fmt::Display for Severity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)] // Thread and Scanner are part of the report schema
 pub enum Category {
     Process,
     Memory,

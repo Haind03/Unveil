@@ -2,8 +2,17 @@
 name = "unveil"
 version = "0.1.0"
 edition = "2021"
-description = "Live Windows threat hunting: injected code, hollowing, inline hooks, hidden processes and stealthy persistence"
+description = "Live Windows threat hunting: injected code, process hollowing, inline hooks, hidden processes and stealthy persistence, MITRE ATT&CK mapped"
+authors = ["HaiND from the Post and Telecommunication Institute of Technology <haind@ptit.edu.vn>"]
 license = "MIT"
+repository = "https://github.com/Haind03/Unveil"
+homepage = "https://github.com/Haind03/Unveil"
+readme = "README.md"
+keywords = ["threat-hunting", "dfir", "windows", "yara", "blue-team"]
+categories = ["command-line-utilities"]
+rust-version = "1.88"
+build = "build.rs"
+exclude = ["/target", "/.github"]
 
 [[bin]]
 name = "unveil"

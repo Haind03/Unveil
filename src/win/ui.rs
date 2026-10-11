@@ -19,23 +19,27 @@ pub const YELLOW: &str = "\x1b[38;5;221m";
 pub struct Ui {
     pub color: bool,
     pub quiet: bool,
+    /// stdout is a console (not redirected): the in-place progress bar is drawn only then.
+    interactive: bool,
     start: Instant,
 }
 
 impl Ui {
     pub fn new(no_color: bool, quiet: bool) -> Ui {
         let mut color = !no_color && std::env::var_os("NO_COLOR").is_none();
+        let mut interactive = true;
         unsafe {
             SetConsoleOutputCP(65001);
             let h = GetStdHandle(STD_OUTPUT_HANDLE);
             let mut mode = 0;
             if GetConsoleMode(h, &mut mode) == 0 {
                 color = false; // redirected to a file or pipe
+                interactive = false;
             } else if SetConsoleMode(h, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) == 0 {
                 color = false;
             }
         }
-        Ui { color, quiet, start: Instant::now() }
+        Ui { color, quiet, interactive, start: Instant::now() }
     }
 
     pub fn c(&self, code: &'static str) -> &'static str {
@@ -84,7 +88,7 @@ impl Ui {
     }
 
     pub fn progress(&self, done: usize, total: usize, label: &str) {
-        if self.quiet || total == 0 {
+        if self.quiet || !self.interactive || total == 0 {
             return;
         }
         const W: usize = 28;

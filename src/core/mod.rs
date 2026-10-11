@@ -11,6 +11,7 @@ pub mod persistrules;
 pub mod procrules;
 pub mod report;
 pub mod taskxml;
+pub mod yarasel;
 
 use serde::Serialize;
 
@@ -25,6 +26,7 @@ pub enum SigStatus {
 }
 
 impl SigStatus {
+    #[allow(dead_code)]
     pub fn is_signed(&self) -> bool {
         matches!(self, SigStatus::Signed(_))
     }
@@ -43,6 +45,7 @@ pub struct ProcInfo {
     pub cmdline: Option<String>,
     pub signature: Option<SigStatus>,
     pub image_exists: bool,
+    #[allow(dead_code)] // carried for the JSON model / future rules
     pub session: u32,
     pub threads: Vec<u32>,
     pub wow64: bool,
@@ -52,6 +55,7 @@ pub struct ProcInfo {
 pub const MEM_COMMIT: u32 = 0x1000;
 pub const MEM_IMAGE: u32 = 0x100_0000;
 pub const MEM_MAPPED: u32 = 0x4_0000;
+#[allow(dead_code)]
 pub const MEM_PRIVATE: u32 = 0x2_0000;
 
 pub const PAGE_EXECUTE: u32 = 0x10;
@@ -90,6 +94,7 @@ pub struct Region {
     pub size: u64,
     pub state: u32,
     pub protect: u32,
+    #[allow(dead_code)]
     pub alloc_protect: u32,
     pub kind: u32,
 }

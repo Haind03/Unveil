@@ -15,7 +15,7 @@ const ALWAYS: &[&str] = &["ntdll.dll", "kernel32.dll", "kernelbase.dll", "amsi.d
 /// Upper bound per section so a huge module cannot stall the scan.
 const MAX_SECTION: u32 = 16 << 20;
 
-pub fn analyze(p: &ProcInfo, h: HANDLE, pm: &ProcMem, cache: &mut FileCache, deep: bool, self_pid: u32) -> Vec<Finding> {
+pub fn analyze(p: &ProcInfo, h: HANDLE, pm: &ProcMem, cache: &FileCache, deep: bool, self_pid: u32) -> Vec<Finding> {
     let mut out = Vec::new();
     let main_base = super::procs::peb_image_base(h).map(|(_, b)| b);
     for m in &pm.images {
@@ -31,7 +31,7 @@ pub fn analyze(p: &ProcInfo, h: HANDLE, pm: &ProcMem, cache: &mut FileCache, dee
     out
 }
 
-fn scan_module(p: &ProcInfo, h: HANDLE, pm: &ProcMem, m: &Module, cache: &mut FileCache, self_pid: u32) -> Vec<Finding> {
+fn scan_module(p: &ProcInfo, h: HANDLE, pm: &ProcMem, m: &Module, cache: &FileCache, self_pid: u32) -> Vec<Finding> {
     let Some(data) = cache.get(&m.path) else { return Vec::new() };
     let Some(img) = DiskImage::parse(&data) else { return Vec::new() };
     // The file on disk was replaced since load (update pending reboot): comparison is meaningless.

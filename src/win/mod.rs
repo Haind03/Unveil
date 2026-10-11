@@ -2,6 +2,7 @@
 
 pub mod hidden;
 pub mod hooks;
+pub mod hunt;
 pub mod memory;
 pub mod persist;
 pub mod procs;
@@ -228,15 +229,29 @@ pub fn read_file(path: &str) -> Option<Vec<u8>> {
     std::fs::read(path).ok()
 }
 
-/// Small cache of parsed-on-disk module bytes, shared across processes (ntdll, kernel32... are the same file).
+/// Cache of on-disk module bytes, shared by all scan workers (ntdll, kernel32... are the same
+/// file in every process). Bounded: past `BUDGET` bytes, files are read but no longer kept.
 #[derive(Default)]
 pub struct FileCache {
-    files: HashMap<String, Option<std::sync::Arc<Vec<u8>>>>,
+    files: std::sync::Mutex<(HashMap<String, Option<std::sync::Arc<Vec<u8>>>>, usize)>,
 }
 
 impl FileCache {
-    pub fn get(&mut self, path: &str) -> Option<std::sync::Arc<Vec<u8>>> {
+    const BUDGET: usize = 768 << 20;
+
+    pub fn get(&self, path: &str) -> Option<std::sync::Arc<Vec<u8>>> {
         let key = path.to_ascii_lowercase();
-        self.files.entry(key).or_insert_with(|| read_file(path).map(std::sync::Arc::new)).clone()
+        if let Some(v) = self.files.lock().unwrap().0.get(&key) {
+            return v.clone();
+        }
+        // Read outside the lock so workers do not serialize on disk I/O.
+        let v = read_file(path).map(std::sync::Arc::new);
+        let mut g = self.files.lock().unwrap();
+        let size = v.as_ref().map_or(0, |b| b.len());
+        if g.1 + size <= Self::BUDGET {
+            g.1 += size;
+            g.0.insert(key, v.clone());
+        }
+        v
     }
 }

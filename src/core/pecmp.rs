@@ -15,6 +15,7 @@ pub struct Patch {
 
 #[derive(Debug, Clone)]
 pub struct ExecSection {
+    #[allow(dead_code)]
     pub name: String,
     pub rva: u32,
     pub size: u32,

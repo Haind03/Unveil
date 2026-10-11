@@ -108,7 +108,7 @@ fn loader_modules(h: HANDLE) -> Vec<Module> {
 }
 
 /// LoadLibrary* entry points inside this process (for thread-start checks).
-fn loadlibrary_addrs(pm: &ProcMem, cache: &mut super::FileCache) -> Vec<u64> {
+fn loadlibrary_addrs(pm: &ProcMem, cache: &super::FileCache) -> Vec<u64> {
     let mut out = Vec::new();
     for m in &pm.images {
         let n = m.name();
@@ -126,7 +126,7 @@ fn loadlibrary_addrs(pm: &ProcMem, cache: &mut super::FileCache) -> Vec<u64> {
     out
 }
 
-pub fn analyze(p: &ProcInfo, h: HANDLE, pm: &ProcMem, cache: &mut super::FileCache) -> Vec<Finding> {
+pub fn analyze(p: &ProcInfo, h: HANDLE, pm: &ProcMem, cache: &super::FileCache) -> Vec<Finding> {
     let threads: Vec<ThreadInfo> =
         p.threads.iter().filter_map(|&tid| super::procs::thread_start(tid).map(|start| ThreadInfo { tid, start })).collect();
 
