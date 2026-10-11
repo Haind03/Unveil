@@ -16,6 +16,7 @@ on a running host. One portable `unveil.exe`, 1,700 embedded YARA rule files, MI
 [![CI](https://github.com/Haind03/Unveil/actions/workflows/ci.yml/badge.svg)](https://github.com/Haind03/Unveil/actions/workflows/ci.yml)
 ![Platform](https://img.shields.io/badge/platform-Windows%2010%2B%20x64-0078d4)
 ![Rust](https://img.shields.io/badge/rust-1.88%2B-orange)
+[![Release](https://img.shields.io/github/v/release/Haind03/Unveil)](https://github.com/Haind03/Unveil/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 *by HaiND from the Post and Telecommunication Institute of Technology*
@@ -92,8 +93,9 @@ not be?"* It inspects the live system from several independent views and flags w
 
 ## Installation
 
-Download `unveil.exe` from the **unveil-windows-x64** artifact of the latest successful
-[CI run](https://github.com/Haind03/Unveil/actions/workflows/ci.yml), or build it:
+Download `unveil.exe` (or the zip with license notices) from the
+[latest release](https://github.com/Haind03/Unveil/releases/latest) and check it against
+`SHA256SUMS.txt`, or build it yourself:
 
 ```powershell
 # On Windows (MSVC toolchain)
@@ -235,8 +237,9 @@ cargo test --release                # plus YARA: every embedded rule file must c
 cargo build --release --target x86_64-pc-windows-gnu
 ```
 
-CI runs the tests on Ubuntu and builds `unveil.exe` on `windows-latest`, published as the
-`unveil-windows-x64` artifact.
+CI runs the tests on Ubuntu and builds `unveil.exe` on `windows-latest` (artifact
+`unveil-windows-x64`). Pushing a tag `vX.Y.Z` that matches `Cargo.toml` publishes a GitHub Release
+with the exe, a zip and SHA-256 checksums.
 
 ## License
 

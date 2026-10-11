@@ -24,4 +24,6 @@ All notable changes to this project are documented here. The format follows
   background thread. Extra rules with `--rules`.
 - CLI with subcommands, parallel scanning, JSON and self-contained HTML reports, exit code 2 on high
   or critical findings.
-- GitHub Actions: Linux tests and Windows release build.
+- GitHub Actions: Linux tests, Windows release build, tagged GitHub Releases.
+
+[0.1.0]: https://github.com/Haind03/Unveil/releases/tag/v0.1.0

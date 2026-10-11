@@ -1,0 +1,6 @@
+# Third-party YARA rules are vendored: keep them out of the GitHub language statistics.
+rules/elastic/** linguist-vendored
+rules/reversinglabs/** linguist-vendored
+rules/signature-base/** linguist-vendored
+*.yar text eol=lf
+*.yara text eol=lf

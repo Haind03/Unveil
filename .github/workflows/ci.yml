@@ -64,3 +64,56 @@ jobs:
             LICENSE
             THIRD_PARTY_NOTICES.md
           if-no-files-found: error
+
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, cross, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches Cargo.toml version
+        run: |
+          CARGO_VER=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
+          test "v${CARGO_VER}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != Cargo.toml v${CARGO_VER}"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          name: unveil-windows-x64
+          path: dist
+      - name: Package
+        run: |
+          VER="${GITHUB_REF_NAME}"
+          EXE=$(find dist -name unveil.exe | head -1)
+          mkdir pkg
+          cp "$EXE" LICENSE THIRD_PARTY_NOTICES.md README.md pkg/
+          (cd pkg && zip -9 "../unveil-${VER}-windows-x64.zip" *)
+          cp "$EXE" unveil.exe
+          sha256sum "unveil-${VER}-windows-x64.zip" unveil.exe > SHA256SUMS.txt
+          {
+            echo "Portable \`unveil.exe\` for Windows 10/11 x64. Run it from an elevated prompt (Administrator)."
+            echo
+            echo '```powershell'
+            echo '.\unveil.exe            # full hunt, JSON + HTML reports next to the exe'
+            echo '.\unveil.exe --help'
+            echo '```'
+            echo
+            awk -v v="${VER#v}" '$0 ~ "^## \\[" v "\\]" {f=1; next} /^## \[/ {f=0} f' CHANGELOG.md
+            echo
+            echo "SHA-256:"
+            echo '```'
+            cat SHA256SUMS.txt
+            echo '```'
+            echo
+            echo "*by HaiND from the Post and Telecommunication Institute of Technology*"
+          } > notes.md
+          cat notes.md
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Unveil ${{ github.ref_name }}
+          body_path: notes.md
+          files: |
+            unveil-${{ github.ref_name }}-windows-x64.zip
+            unveil.exe
+            SHA256SUMS.txt
