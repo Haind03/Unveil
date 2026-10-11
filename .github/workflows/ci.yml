@@ -6,6 +6,11 @@ on:
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a GitHub Release (tag v<Cargo.toml version>) from this commit"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -67,24 +72,29 @@ jobs:
 
   release:
     name: GitHub Release
-    if: startsWith(github.ref, 'refs/tags/v')
+    # On a pushed tag vX.Y.Z, or manually: Actions -> CI -> Run workflow -> release = true.
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.release)
     needs: [test, cross, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
-      - name: Tag matches Cargo.toml version
+      - name: Release version
+        id: ver
         run: |
-          CARGO_VER=$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)
-          test "v${CARGO_VER}" = "${GITHUB_REF_NAME}" || { echo "tag ${GITHUB_REF_NAME} != Cargo.toml v${CARGO_VER}"; exit 1; }
+          CARGO_VER="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ] && [ "${GITHUB_REF_NAME}" != "${CARGO_VER}" ]; then
+            echo "tag ${GITHUB_REF_NAME} != Cargo.toml ${CARGO_VER}"; exit 1
+          fi
+          echo "tag=${CARGO_VER}" >> "$GITHUB_OUTPUT"
       - uses: actions/download-artifact@v4
         with:
           name: unveil-windows-x64
           path: dist
       - name: Package
         run: |
-          VER="${GITHUB_REF_NAME}"
+          VER="${{ steps.ver.outputs.tag }}"
           EXE=$(find dist -name unveil.exe | head -1)
           mkdir pkg
           cp "$EXE" LICENSE THIRD_PARTY_NOTICES.md README.md pkg/
@@ -111,9 +121,12 @@ jobs:
           cat notes.md
       - uses: softprops/action-gh-release@v2
         with:
-          name: Unveil ${{ github.ref_name }}
+          tag_name: ${{ steps.ver.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: Unveil ${{ steps.ver.outputs.tag }}
           body_path: notes.md
+          make_latest: true
           files: |
-            unveil-${{ github.ref_name }}-windows-x64.zip
+            unveil-${{ steps.ver.outputs.tag }}-windows-x64.zip
             unveil.exe
             SHA256SUMS.txt

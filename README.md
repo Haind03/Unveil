@@ -238,7 +238,8 @@ cargo build --release --target x86_64-pc-windows-gnu
 ```
 
 CI runs the tests on Ubuntu and builds `unveil.exe` on `windows-latest` (artifact
-`unveil-windows-x64`). Pushing a tag `vX.Y.Z` that matches `Cargo.toml` publishes a GitHub Release
+`unveil-windows-x64`). Pushing a tag `vX.Y.Z` that matches `Cargo.toml`, or running the CI workflow manually with
+`release = true`, publishes a GitHub Release
 with the exe, a zip and SHA-256 checksums.
 
 ## License
