@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: Tests (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Core logic tests (no YARA engine)
+        run: cargo test --no-default-features --locked
+      - name: Full tests (YARA rule compilation and matching)
+        run: cargo test --release --locked
+
+  cross:
+    name: Cross-compile check (Linux -> windows-gnu)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+      - name: Check
+        run: cargo check --release --locked --target x86_64-pc-windows-gnu
+
+  windows:
+    name: Release build (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: cargo build --release --locked
+      - name: Smoke test
+        shell: pwsh
+        run: |
+          ./target/release/unveil.exe --version
+          ./target/release/unveil.exe --help
+          ./target/release/unveil.exe licenses | Select-Object -First 3
+      - name: Upload unveil.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: unveil-windows-x64
+          path: |
+            target/release/unveil.exe
+            LICENSE
+            THIRD_PARTY_NOTICES.md
+          if-no-files-found: error
