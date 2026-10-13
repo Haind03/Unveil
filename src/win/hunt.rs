@@ -113,6 +113,17 @@ pub fn run(cli: &Cli) -> i32 {
     let host = super::hostname();
     let (started, stamp) = super::local_time();
     ui.banner(&host, elevated);
+    // Forensic footprint controls (silent on failure: a lowered-privilege run should not abort).
+    if cli.lowprio && super::footprint::enter_background_mode() {
+        ui.info("running in background priority (--lowprio)");
+    }
+    if let Some(pct) = cli.cpu_limit {
+        if super::footprint::cap_cpu(pct) {
+            ui.info(&format!("CPU capped at {pct}% (--cpu-limit)"));
+        } else {
+            ui.warn(&format!("could not apply --cpu-limit {pct}% (Job Object creation refused)"));
+        }
+    }
     if !elevated {
         ui.warn("not elevated: run from an Administrator prompt to see protected and other users' processes");
     } else if !debug {
@@ -126,7 +137,6 @@ pub fn run(cli: &Cli) -> i32 {
         ui.warn("this build has no YARA support (built without the \"yara\" feature)");
     }
 
-    let workers = crate::worker_count(cli.threads);
     let phases = Phases { ui: &ui, names: mods.phases() };
     let self_pid = std::process::id();
     let self_exe = std::env::current_exe().ok().map(|p| p.display().to_string().to_ascii_lowercase());
@@ -147,6 +157,9 @@ pub fn run(cli: &Cli) -> i32 {
     }
     let mut ps = procs::collect(&raw);
     ui.info(&format!("{} processes, {} threads", ps.len(), ps.iter().map(|p| p.threads.len()).sum::<usize>()));
+    // Workers are sized once we know the input volume: per-phase they are capped by that phase's
+    // item count anyway, so --threads 16 on a six-process host still ends up as six workers.
+    let workers = crate::core::sched::worker_count(ps.len(), cli.threads, 16);
     if mods.processes || mods.yara {
         let mut seen = HashSet::new();
         let paths: Vec<String> =
@@ -174,7 +187,12 @@ pub fn run(cli: &Cli) -> i32 {
         }
     }
     report.processes_scanned = ps.len();
-    let targets: Vec<&ProcInfo> = ps.iter().filter(|p| p.pid > 4 && (cli.pid.is_empty() || cli.pid.contains(&p.pid))).collect();
+    // Scan the heaviest processes first (thread count is a cheap proxy for VAD + YARA cost), so
+    // the final tail is small items that finish together across all workers instead of one
+    // giant process holding up the last 30% of each phase.
+    let mut targets: Vec<&ProcInfo> = ps.iter().filter(|p| p.pid > 4 && (cli.pid.is_empty() || cli.pid.contains(&p.pid))).collect();
+    let order = crate::core::sched::heavy_first(&targets, |p| p.threads.len() as u64);
+    targets = order.into_iter().map(|i| targets[i]).collect();
 
     // 2. Memory and hooks, one handle and one VAD walk per process.
     if mods.memory || mods.hooks {
@@ -282,12 +300,19 @@ pub fn run(cli: &Cli) -> i32 {
             o.insert("min_severity".into(), serde_json::json!(cli.min_severity));
         }
         let body = serde_json::to_string_pretty(&v).unwrap_or_default();
-        if let Some(w) = write_with_fallback(&ui, &p, &body, default_paths) {
+        if crate::is_stdout(&p) {
+            // Zero-footprint mode: operator pipes the JSON somewhere off the host.
+            use std::io::Write as _;
+            let _ = std::io::stdout().write_all(body.as_bytes());
+            let _ = std::io::stdout().write_all(b"\n");
+        } else if let Some(w) = write_with_fallback(&ui, &p, &body, default_paths) {
             println!("{}JSON report:{} {}", ui.c(ui::DIM), ui.c(ui::RESET), w.display());
         }
     }
     if let Some(p) = html_path {
-        if let Some(w) = write_with_fallback(&ui, &p, &html::render(&report, duration), default_paths) {
+        if crate::is_stdout(&p) {
+            ui.warn("--html - is not supported; HTML must go to a file");
+        } else if let Some(w) = write_with_fallback(&ui, &p, &html::render(&report, duration), default_paths) {
             println!("{}HTML report:{} {}", ui.c(ui::DIM), ui.c(ui::RESET), w.display());
         }
     }

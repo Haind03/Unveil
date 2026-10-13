@@ -141,6 +141,9 @@ Options:
       --no-color             Disable colors (NO_COLOR is honoured too)
       --rules <PATH>         Extra YARA rules (file or folder, repeatable)
       --no-yara              Skip YARA in a full hunt
+      --output-dir <DIR>     Write reports into DIR (external drive, SMB share)
+      --lowprio              Lower CPU, memory and I/O priority (BACKGROUND_BEGIN)
+      --cpu-limit <PCT>      Hard CPU-rate cap, 1..=100 (Windows Job Object)
       --pid <PID>            Limit per-process phases to these PIDs (repeatable)
       --threads <N>          Worker threads (default: CPUs, max 16)
   -q, --quiet                Findings and summary only
@@ -168,6 +171,13 @@ folder is read-only).
 
 # YARA only, with your own rules on top of the embedded ones
 .\unveil.exe yara --rules C:\IR\rules --html C:\IR\yara.html
+
+# Production host: throttle to 25% of one core, keep LastAccessTime clean,
+# write reports to a USB mount - nothing lands on the host's drive.
+.\unveil.exe --lowprio --cpu-limit 25 --output-dir E:\IR\unveil
+
+# Pipe JSON into a SIEM over WinRM without touching the host's disk at all
+.\unveil.exe -q --json - | ConvertFrom-Json
 
 # In a script: exit code 2 means high or critical findings
 .\unveil.exe -q --no-report; if ($LASTEXITCODE -eq 2) { Write-Warning "host needs triage" }
@@ -210,6 +220,30 @@ folder is read-only).
 | `build.rs` | Embeds `rules/**` and the third-party license texts into the executable |
 | `rules/custom` | Unveil's own YARA rules (evasion tradecraft: syscalls, AMSI/ETW patching, unhooking, sleep obfuscation) |
 | `rules/elastic`, `rules/reversinglabs`, `rules/signature-base` | Third-party YARA rules, pinned and licensed |
+
+## Forensic footprint
+
+Unveil is designed to disturb the host as little as possible so an analyst can run it on a live
+system without destroying evidence or alerting the operator:
+
+- **No writes to the host's drives.** `--output-dir <DIR>` sends both reports to an external
+  drive or SMB share; `--json -` streams the JSON report to stdout so you can pipe it over SSH
+  or WinRM. Nothing is written on the drive being investigated.
+- **`LastAccessTime` preserved.** Every file Unveil reads (process images, autostart targets,
+  files YARA-scanned) opens with `FILE_WRITE_ATTRIBUTES` and, on close, restores atime using
+  the documented NTFS sentinel `SetFileTime(..., FILETIME{-1,-1}, ...)`. NTFS then skips the
+  cached atime update. On FAT / network shares that ignore the sentinel, Unveil falls back to a
+  plain share-read; atime behavior there is already filesystem-specific.
+- **Throttling for production hosts.** `--lowprio` puts Unveil into `PROCESS_MODE_BACKGROUND_BEGIN`
+  (CPU + memory + I/O priority lowered together). `--cpu-limit 25` installs a hard CPU-rate cap
+  through a Windows Job Object.
+- **What Unveil does leave behind, by design.** The `unveil.exe` prefetch entry, process creation
+  events (4688 / Sysmon 1) and, if YARA is used, WMI performance counters. These are expected
+  for any binary launched by an analyst, and a correct SOC must see them.
+
+Unveil is a **defensive** tool: it does not try to hide from EDR or AV, and it does not clean
+event logs, prefetch entries or other host artifacts. Those are anti-forensic actions and are
+not in scope.
 
 ## Limitations
 

@@ -1,5 +1,6 @@
 //! Windows collectors. Everything here gathers raw data and hands it to `crate::core` rules.
 
+pub mod footprint;
 pub mod hidden;
 pub mod hooks;
 pub mod hunt;
@@ -225,8 +226,9 @@ pub fn local_time() -> (String, String) {
 }
 
 /// Read a file while it may be in use (images of running processes are share-read).
+/// Keeps the NTFS `LastAccessTime` unchanged: see `footprint::read_file_keep_atime`.
 pub fn read_file(path: &str) -> Option<Vec<u8>> {
-    std::fs::read(path).ok()
+    footprint::read_file_keep_atime(path)
 }
 
 /// Cache of on-disk module bytes, shared by all scan workers (ntdll, kernel32... are the same

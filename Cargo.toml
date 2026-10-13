@@ -1,6 +1,6 @@
 [package]
 name = "unveil"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Live Windows threat hunting: injected code, process hollowing, inline hooks, hidden processes and stealthy persistence, MITRE ATT&CK mapped"
 authors = ["HaiND from the Post and Telecommunication Institute of Technology <haind@ptit.edu.vn>"]
@@ -45,6 +45,8 @@ windows-sys = { version = "0.61", features = [
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
     "Win32_System_Diagnostics_Debug",
+    "Win32_System_IO",
+    "Win32_System_JobObjects",
     "Win32_System_Kernel",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",

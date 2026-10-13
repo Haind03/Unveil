@@ -92,6 +92,19 @@ pub struct Cli {
     /// Print only the findings and the summary.
     #[arg(short, long, global = true)]
     pub quiet: bool,
+
+    /// Lower Unveil's CPU, memory and I/O priority (BACKGROUND_BEGIN). Use on production hosts.
+    #[arg(long, global = true)]
+    pub lowprio: bool,
+
+    /// Cap Unveil's CPU share at this percentage of a single core (1..=100, Windows Job Object
+    /// hard cap). Combine with --threads to control concurrency on busy hosts.
+    #[arg(long, global = true, value_name = "PCT")]
+    pub cpu_limit: Option<u32>,
+
+    /// Write reports into this folder instead of next to the exe. The folder is created on demand.
+    #[arg(long, global = true, value_name = "DIR", conflicts_with_all = ["json", "html", "no_report"])]
+    pub output_dir: Option<PathBuf>,
 }
 
 #[derive(Subcommand, Debug, Clone, Copy, PartialEq, Eq)]
@@ -190,7 +203,8 @@ pub fn default_report_paths(dir: &Path, host: &str, stamp: &str) -> (PathBuf, Pa
     (dir.join(format!("{base}.json")), dir.join(format!("{base}.html")))
 }
 
-/// Report destinations: the explicit `--json` / `--html` files, or both next to the exe by default.
+/// Report destinations: the explicit `--json` / `--html` files, `--output-dir <DIR>`, or both
+/// next to the exe by default. `--json -` means "write to stdout", carried as `PathBuf::from("-")`.
 pub fn report_targets(cli: &Cli, exe_dir: &Path, host: &str, stamp: &str) -> (Option<PathBuf>, Option<PathBuf>) {
     if cli.no_report {
         return (None, None);
@@ -198,8 +212,15 @@ pub fn report_targets(cli: &Cli, exe_dir: &Path, host: &str, stamp: &str) -> (Op
     if cli.json.is_some() || cli.html.is_some() {
         return (cli.json.clone(), cli.html.clone());
     }
-    let (j, h) = default_report_paths(exe_dir, host, stamp);
+    let dir = cli.output_dir.clone().unwrap_or_else(|| exe_dir.to_path_buf());
+    let (j, h) = default_report_paths(&dir, host, stamp);
     (Some(j), Some(h))
+}
+
+/// A `-` as a path means stdout. Used for `--json -`, so a hunt can stream into a SIEM pipeline
+/// without ever writing to the drive being investigated.
+pub fn is_stdout(p: &Path) -> bool {
+    p.as_os_str() == "-"
 }
 
 /// 2 when any high or critical finding exists, else 0.
@@ -208,11 +229,6 @@ pub fn exit_code(max: Option<Severity>) -> i32 {
         Some(s) if s >= Severity::High => 2,
         _ => 0,
     }
-}
-
-pub fn worker_count(requested: Option<usize>) -> usize {
-    let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
-    requested.unwrap_or(cpus).clamp(1, 16)
 }
 
 fn print_licenses() {
@@ -310,6 +326,31 @@ mod tests {
         let c = parse(&["--no-report"]);
         assert_eq!(report_targets(&c, dir, "h", "s"), (None, None));
         assert_eq!(sanitize(""), "host");
+
+        // --output-dir redirects both reports.
+        let c = parse(&["--output-dir", "D:/evidence"]);
+        let (j, h) = report_targets(&c, dir, "ws", "stamp");
+        assert_eq!(j.unwrap().parent(), Some(Path::new("D:/evidence")));
+        assert_eq!(h.unwrap().parent(), Some(Path::new("D:/evidence")));
+
+        // --json - means stdout (recognised by is_stdout, carried as PathBuf("-")).
+        let c = parse(&["--json", "-"]);
+        let (j, h) = report_targets(&c, dir, "h", "s");
+        assert!(is_stdout(&j.unwrap()));
+        assert!(h.is_none());
+
+        // Mutually exclusive combinations the CLI must reject.
+        assert!(Cli::try_parse_from(["unveil", "--output-dir", "x", "--json", "a.json"]).is_err());
+        assert!(Cli::try_parse_from(["unveil", "--output-dir", "x", "--no-report"]).is_err());
+    }
+
+    #[test]
+    fn footprint_flags_parse() {
+        let c = parse(&["--lowprio", "--cpu-limit", "25"]);
+        assert!(c.lowprio);
+        assert_eq!(c.cpu_limit, Some(25));
+        // Hard-cap percent is validated at apply time (clamp to 1..=100), not at parse time.
+        assert!(Cli::try_parse_from(["unveil", "--cpu-limit", "x"]).is_err());
     }
 
     #[test]
@@ -322,9 +363,10 @@ mod tests {
 
     #[test]
     fn workers_are_bounded() {
-        assert_eq!(worker_count(Some(0)), 1);
-        assert_eq!(worker_count(Some(64)), 16);
-        assert!((1..=16).contains(&worker_count(None)));
+        use crate::core::sched::worker_count;
+        assert_eq!(worker_count(100, Some(0), 16), 1);
+        assert_eq!(worker_count(100, Some(64), 16), 16);
+        assert_eq!(worker_count(3, Some(64), 16), 3);
     }
 
     #[test]

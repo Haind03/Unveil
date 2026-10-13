@@ -10,6 +10,7 @@ pub mod pecmp;
 pub mod persistrules;
 pub mod procrules;
 pub mod report;
+pub mod sched;
 pub mod taskxml;
 pub mod yarasel;
 
