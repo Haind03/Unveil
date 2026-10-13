@@ -118,6 +118,12 @@ pub fn command_target(cmd: &str) -> Option<String> {
 /// Directories normal software does not run from, and that any user can write to.
 pub fn suspicious_dir(path: &str) -> Option<&'static str> {
     let p = normalize(path);
+    // .NET single-file apps (publish with PublishSingleFile=true) extract their native
+    // dependencies to AppData\Local\Temp\.net\<app>\<hash>\. That is user temp by location but
+    // a well-known, documented extraction cache - not a suspicious drop.
+    if p.contains("\\appdata\\local\\temp\\.net\\") {
+        return None;
+    }
     let checks: &[(&str, &str)] = &[
         ("\\appdata\\local\\temp\\", "user temp directory"),
         ("\\windows\\temp\\", "Windows temp directory"),

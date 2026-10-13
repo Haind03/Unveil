@@ -82,6 +82,8 @@ fn scan_module(p: &ProcInfo, h: HANDLE, pm: &ProcMem, m: &Module, cache: &FileCa
             _ => Some((dest, Target::Unknown)),
         }
     };
+    let module_name = m.name();
+    let path_lc = m.path.to_ascii_lowercase();
     let ctx = HookCtx {
         pid: p.pid,
         process: &p.name,
@@ -89,6 +91,7 @@ fn scan_module(p: &ProcInfo, h: HANDLE, pm: &ProcMem, m: &Module, cache: &FileCa
         module_base: m.base,
         exports: &exports,
         self_scan: p.pid == self_pid,
+        wow64_ntdll: p.wow64 && module_name == "ntdll.dll" && path_lc.contains("\\syswow64\\"),
     };
     hookrules::classify(&ctx, &patches, &target_of)
 }

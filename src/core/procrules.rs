@@ -74,6 +74,12 @@ const SHELLS: &[&str] = &[
 const LEGIT_LOOKALIKES: &[&str] = &[
     "taskhost.exe", "taskhostex.exe", "iexplore.exe", "sihclient.exe", "smartscreensettings.exe", "conhost.exe",
     "svchost.exe", "dllhst3g.exe", "lsm.exe", "wsqmcons.exe", "wermgr.exe", "spoolss.exe",
+    // Added in v0.3.0 after live-host false positives (see CHANGELOG).
+    "dashost.exe",      // Device Association Service Host, Microsoft-signed
+    "wmphost.exe",      // Windows Media Player sharing
+    "upfc.exe",         // Updater runtime
+    "msoia.exe",        // Office IntelligentActionService
+    "cmdhost.exe",      // Windows legitimate command host
 ];
 const SCRIPT_HOSTS: &[&str] = &["wscript.exe", "cscript.exe", "mshta.exe"];
 

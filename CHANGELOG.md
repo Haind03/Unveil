@@ -4,6 +4,42 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-10-13
+
+### Changed
+- **Embedded rule corpus is now deflate-compressed.** The ~11 MB of YARA rule bytes (Elastic,
+  ReversingLabs, signature-base, Unveil's own) are stored compressed inside `unveil.exe`
+  (~2 MB on disk) and inflated once at startup. This is the standard mitigation THOR, Loki and
+  every other YARA-based scanner uses so that antivirus engines no longer string-match malware
+  signatures sitting inside the scanner's own binary. **Binary size drops ~27.5 MB → ~18.5 MB.**
+- **Scheduling and severity tuning after v0.2.0 field reports (388 processes, 604 findings)**:
+  - `is_jit_process` recognises common Electron / Chromium / CEF chat clients: Discord, Slack,
+    Teams, WhatsApp, Signal, Telegram, Zalo (Zalo.exe / ZaloPC.exe), Spotify, Figma, GitHub
+    Desktop, Notion, Obsidian, Copilot and Windows Terminal.
+  - `LEGIT_LOOKALIKES` adds `dasHost.exe`, `wmphost.exe`, `upfc.exe`, `msoia.exe`, `cmdhost.exe`
+    (Microsoft-signed binaries that previously tripped the look-alike edit-distance rule).
+  - "Mapped image hidden from the loader module list" now whitelists UWP / WinUI resource DLLs
+    (`*.resources.*.dll`, `Windows.UI.*`, `Microsoft.UI.*`, `*.winmd`), MSIX packaged apps
+    (`\WindowsApps\`, `\SystemApps\`) and the .NET single-file native-dependency unpack cache
+    (`AppData\Local\Temp\.net\`). Those are documented activation-context mappings, not hidden
+    DLLs.
+  - "Syscall stub modified" no longer fires in a WOW64 process's 32-bit `ntdll.dll`: every Zw*
+    stub there is redirected into `wow64cpu.dll`'s transition thunk by design, not by an EDR
+    hook.
+  - "Executable unbacked memory" (non-RWX) now scales severity with allocation size: >=256 KiB
+    stays Medium, 16-256 KiB drops to Low, below that to Info. Tiny CRT / trampoline thunks no
+    longer flood the report.
+  - "RWX memory in JIT process" drops from Low to Info (JS engines use RWX trampolines by
+    design; still in the JSON report, hidden from the console at default `--min-severity low`).
+- **AppData\Local\Temp\.net\** is no longer flagged as a user-writable location: it is the
+  documented .NET PublishSingleFile native-dependency extraction cache.
+
+### Added
+- Note in README on AV flagging: a YARA scanner embeds signatures of real malware. If
+  Defender / an EDR flags `unveil.exe`, that is signature-matching, not malicious intent.
+  Compressed storage reduces this; a code-signing certificate would eliminate it. In the
+  meantime, add an allowlist entry for the exe before scanning.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added
@@ -52,5 +88,6 @@ All notable changes to this project are documented here. The format follows
   or critical findings.
 - GitHub Actions: Linux tests, Windows release build, tagged GitHub Releases.
 
+[0.3.0]: https://github.com/Haind03/Unveil/releases/tag/v0.3.0
 [0.2.0]: https://github.com/Haind03/Unveil/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Haind03/Unveil/releases/tag/v0.1.0

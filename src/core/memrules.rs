@@ -33,9 +33,19 @@ const JIT_MODULES: &[&str] = &[
 
 pub fn is_jit_process(name: &str, modules: &[Module]) -> bool {
     let n = name.to_ascii_lowercase();
-    if ["chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "node.exe", "java.exe", "javaw.exe", "code.exe"]
-        .contains(&n.as_str())
-    {
+    // Known runtimes and Electron/Chromium/CEF-based chat clients that generate code at runtime.
+    // Being wrong one way (treating a plain app as a JIT) only costs us some findings; the other
+    // way (missing a JIT) produced the Zalo / Telegram / Discord false positives seen in field
+    // reports.
+    const JIT_APPS: &[&str] = &[
+        "chrome.exe", "msedge.exe", "firefox.exe", "brave.exe", "opera.exe", "vivaldi.exe",
+        "node.exe", "java.exe", "javaw.exe", "code.exe", "code-insiders.exe",
+        "discord.exe", "slack.exe", "teams.exe", "ms-teams.exe", "whatsapp.exe", "signal.exe",
+        "telegram.exe", "zalo.exe", "zalopc.exe",
+        "spotify.exe", "github desktop.exe", "notion.exe", "obsidian.exe", "figma.exe",
+        "copilotapp.exe", "windowsterminal.exe", "powershell_ise.exe",
+    ];
+    if JIT_APPS.contains(&n.as_str()) {
         return true;
     }
     modules.iter().any(|m| JIT_MODULES.contains(&m.name().as_str()))
@@ -128,16 +138,28 @@ pub fn analyze(v: &MemView) -> Vec<Finding> {
             sev = Severity::Critical;
             title = "Thread executing from unbacked memory".to_string();
         } else if v.jit {
+            // JIT processes allocate RX code at runtime by design. v0.3.0: RWX in a JIT host is
+            // interesting but not actionable by itself (JS engines use RWX trampolines), so it is
+            // Info — still in the JSON report, hidden from the console at the default --min-severity.
             if !a.rwx {
                 continue;
             }
-            sev = Severity::Low;
+            sev = Severity::Info;
             title = "RWX memory in JIT process".to_string();
         } else if a.rwx {
             sev = Severity::High;
             title = "RWX unbacked memory".to_string();
         } else {
-            sev = Severity::Medium;
+            // v0.3.0: non-RWX unbacked exec memory is often tiny CRT/C++ runtime thunks installed
+            // by regular apps (<= 64 KiB). Scale severity by allocation size so one 4 KiB stub
+            // page does not float to Medium next to real injected modules.
+            sev = if a.exec_size >= (256 << 10) {
+                Severity::Medium
+            } else if a.exec_size >= (16 << 10) {
+                Severity::Low
+            } else {
+                Severity::Info
+            };
             title = "Executable unbacked memory".to_string();
         }
         if !threads.is_empty() && sev < Severity::Critical {

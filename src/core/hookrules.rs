@@ -63,6 +63,10 @@ pub struct HookCtx<'a> {
     pub module_base: u64,
     pub exports: &'a [(u32, String)],
     pub self_scan: bool,
+    /// True when we are diffing the 32-bit `ntdll.dll` of a WOW64 process. Every Zw* syscall
+    /// stub there is a 4-byte jump into `wow64cpu.dll`'s private thunk, by design: those are
+    /// not EDR hooks and must not be reported as "Syscall stub modified".
+    pub wow64_ntdll: bool,
 }
 
 /// Nearest export at or before `rva` (within 64 bytes counts as "at the function start").
@@ -165,12 +169,19 @@ pub fn classify(ctx: &HookCtx, patches: &[Patch], target_of: &dyn Fn(u64) -> Opt
                     .detail(bytes)
                     .mitre(&["T1562.001"]),
             ),
-            _ if short.starts_with("Nt") || short.starts_with("Zw") => out.push(
-                mk(Severity::Medium, format!("Syscall stub modified: {label}"))
-                    .addr(addr)
-                    .detail(bytes)
-                    .mitre(&["T1562.001"]),
-            ),
+            _ if short.starts_with("Nt") || short.starts_with("Zw") => {
+                // In a WOW64 process the 32-bit ntdll stubs always redirect into wow64cpu's
+                // transition thunk - that is not a hook (see HookCtx::wow64_ntdll).
+                if ctx.wow64_ntdll {
+                    continue;
+                }
+                out.push(
+                    mk(Severity::Medium, format!("Syscall stub modified: {label}"))
+                        .addr(addr)
+                        .detail(bytes)
+                        .mitre(&["T1562.001"]),
+                );
+            }
             _ => generic += 1,
         }
     }
@@ -203,7 +214,7 @@ mod tests {
     #[test]
     fn classifies_amsi_and_etw() {
         let exports = vec![(0x100u32, "AmsiScanBuffer".to_string()), (0x200, "EtwEventWrite".to_string())];
-        let ctx = HookCtx { pid: 1, process: "p.exe", module: "amsi.dll", module_base: 0x1000_0000, exports: &exports, self_scan: false };
+        let ctx = HookCtx { pid: 1, process: "p.exe", module: "amsi.dll", module_base: 0x1000_0000, exports: &exports, self_scan: false, wow64_ntdll: false };
         let patches = vec![
             Patch { rva: 0x100, mem: vec![0xB8, 0x57, 0x00, 0x07, 0x80, 0xC3], disk: vec![0x4C, 0x8B, 0xDC, 0x49, 0x89, 0x5B] },
             Patch { rva: 0x200, mem: vec![0xC3], disk: vec![0x4C] },
@@ -218,7 +229,7 @@ mod tests {
     #[test]
     fn unbacked_hook_is_critical() {
         let exports = vec![(0x100u32, "NtCreateThreadEx".to_string())];
-        let ctx = HookCtx { pid: 1, process: "p.exe", module: "ntdll.dll", module_base: 0, exports: &exports, self_scan: false };
+        let ctx = HookCtx { pid: 1, process: "p.exe", module: "ntdll.dll", module_base: 0, exports: &exports, self_scan: false, wow64_ntdll: false };
         let patches = vec![Patch { rva: 0x100, mem: vec![0xE9, 1, 2, 3, 4], disk: vec![0x4C, 0x8B, 0xD1, 0xB8, 0xC1] }];
         let f = classify(&ctx, &patches, &|_| Some((0x5000, Target::Unbacked)));
         assert_eq!(f[0].severity, Severity::Critical);

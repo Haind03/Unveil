@@ -8,7 +8,39 @@ use std::time::Duration;
 
 use crate::core::yarasel::{self, Meta};
 
-pub use crate::embedded::RULES as EMBEDDED;
+/// Decompress the embedded rule corpus (deflate; see `build.rs`) and parse the length-prefixed
+/// `(path, bytes)` entries. Done once at startup and cached. Returning owned bytes keeps the
+/// hot path (`compile`) unchanged versus the previous `include_bytes!` layout.
+fn decode_embedded() -> Vec<(String, Vec<u8>)> {
+    let raw = miniz_oxide::inflate::decompress_to_vec_with_limit(crate::embedded::RULES_DEFLATED, crate::embedded::RULES_RAW_LEN + 1024)
+        .expect("embedded rule corpus deflate stream is corrupt - rebuild unveil");
+    let mut out = Vec::new();
+    let mut i = 0;
+    while i + 2 <= raw.len() {
+        let plen = u16::from_le_bytes([raw[i], raw[i + 1]]) as usize;
+        i += 2;
+        if i + plen + 4 > raw.len() {
+            break;
+        }
+        let path = String::from_utf8_lossy(&raw[i..i + plen]).into_owned();
+        i += plen;
+        let dlen = u32::from_le_bytes([raw[i], raw[i + 1], raw[i + 2], raw[i + 3]]) as usize;
+        i += 4;
+        if i + dlen > raw.len() {
+            break;
+        }
+        out.push((path, raw[i..i + dlen].to_vec()));
+        i += dlen;
+    }
+    out
+}
+
+/// All embedded rule files, in path order. Cached: inflate runs exactly once.
+pub fn embedded() -> &'static [(String, Vec<u8>)] {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<Vec<(String, Vec<u8>)>> = OnceLock::new();
+    CACHE.get_or_init(decode_embedded)
+}
 
 pub struct RuleSet {
     pub rules: yara_x::Rules,
@@ -50,7 +82,7 @@ fn walk(p: &Path, out: &mut Vec<PathBuf>) {
 /// Rule sources to compile: `(origin, namespace, bytes)`.
 fn sources(extra: &[PathBuf], skipped: &mut Vec<(String, String)>) -> Vec<(String, String, Vec<u8>)> {
     let mut v: Vec<(String, String, Vec<u8>)> =
-        EMBEDDED.iter().map(|(rel, b)| (rel.to_string(), yarasel::namespace(rel), b.to_vec())).collect();
+        embedded().iter().map(|(rel, b)| (rel.to_string(), yarasel::namespace(rel), b.to_vec())).collect();
     for root in extra {
         let mut files = Vec::new();
         walk(root, &mut files);
@@ -143,11 +175,11 @@ mod tests {
     /// The custom rule file must compile cleanly on its own (no skipped files, no errors).
     #[test]
     fn custom_rules_compile() {
-        let (rel, bytes) = EMBEDDED.iter().find(|(r, _)| *r == "custom/unveil.yar").expect("custom rules embedded");
+        let (rel, bytes) = embedded().iter().find(|(r, _)| r == "custom/unveil.yar").expect("custom rules embedded");
         let mut c = yara_x::Compiler::new();
         c.enable_includes(false);
         c.new_namespace(&yarasel::namespace(rel));
-        if let Err(e) = c.add_source(yara_x::SourceCode::from(*bytes).with_origin(*rel)) {
+        if let Err(e) = c.add_source(yara_x::SourceCode::from(bytes.as_slice()).with_origin(rel.clone())) {
             panic!("rules/custom/unveil.yar does not compile:\n{e}");
         }
         let rules = c.build();
@@ -159,7 +191,7 @@ mod tests {
     fn all_embedded_rules_compile() {
         let rs = compile(&[]);
         assert!(rs.skipped.is_empty(), "skipped: {:?}", &rs.skipped[..rs.skipped.len().min(10)]);
-        assert_eq!(rs.files_ok, EMBEDDED.len());
+        assert_eq!(rs.files_ok, embedded().len());
         assert!(rs.rule_count > 1000);
     }
 

@@ -113,6 +113,32 @@ cargo build --release --target x86_64-pc-windows-gnu
 
 Build without the YARA engine (smaller, faster to compile): `cargo build --release --no-default-features`.
 
+### A note on antivirus flagging
+
+A YARA scanner embeds the byte patterns of real malware (Cobalt Strike beacons, Mimikatz,
+NotPetya, APT droppers) inside its own binary — those patterns are what the rules match. When
+Defender, SmartScreen or an EDR scans `unveil.exe` they see those bytes and may flag the
+executable as "contains malware signatures". This affects every YARA-based scanner (THOR, Loki,
+Fenrir, etc.) and is **not** evidence that Unveil is malicious — it is signature matching on the
+scanner's own rule corpus.
+
+Unveil mitigates this by storing the embedded rule corpus **deflate-compressed** (see
+`build.rs`); compressed bytes have no stable alignment, so hex strings and ASCII IOCs no longer
+appear verbatim in the exe. This cut the binary from 27.5 MB to 18.5 MB and reduces (but does
+not eliminate) AV detections.
+
+If your AV still flags `unveil.exe`:
+
+1. **Verify the download.** Check the SHA-256 of the file you downloaded against the
+   `SHA256SUMS.txt` published with each GitHub Release.
+2. **Allowlist the exe** by SHA-256 or full path before scanning. On Microsoft Defender:
+   `Add-MpPreference -ExclusionPath 'C:\IR\unveil.exe'`.
+3. **Report the false positive** to your AV vendor if the detection persists. A code-signing
+   certificate on future releases would eliminate most of these; it is on the roadmap.
+
+Unveil is open source (MIT, including the `rules/custom` set) — anyone can audit the binary and
+the rule corpus end to end.
+
 ## Usage
 
 Run from an **elevated** prompt (Administrator). Without elevation, protected processes and those

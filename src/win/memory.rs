@@ -180,6 +180,16 @@ pub fn analyze(p: &ProcInfo, h: HANDLE, pm: &ProcMem, cache: &super::FileCache) 
                 || lp.contains("\\microsoft.net\\")
                 || n.ends_with(".ni.dll")
                 || n.ends_with(".mui")
+                // v0.3.0 field-report whitelist. UWP / WinUI apps map resource DLLs and metadata
+                // through activation contexts; those are not in the PEB loader list by design.
+                || n.ends_with(".winmd")                              // Windows metadata
+                || n.contains(".resources.")                          // *.resources.*.dll (localisation satellites)
+                || n.starts_with("windows.ui.")                       // Windows.UI.* XAML runtimes
+                || n.starts_with("windows.applicationmodel.")         // UWP activation
+                || n.starts_with("microsoft.ui.")                     // WinUI 3
+                || lp.contains("\\windowsapps\\")                     // packaged (MSIX) apps
+                || lp.contains("\\systemapps\\")                      // first-party packaged apps
+                || lp.contains("\\appdata\\local\\temp\\.net\\")      // dotnet single-file native unpack
             {
                 continue;
             }
